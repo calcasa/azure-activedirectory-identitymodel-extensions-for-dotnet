@@ -44,10 +44,8 @@ namespace Microsoft.IdentityModel.Tokens.Tests
     /// </summary>
     public class ReferenceTests
     {
-#if NET_CORE
-        [PlatformSpecific(TestPlatforms.Windows)]
-#endif
-#if NET472 || NETCOREAPP3_1
+
+#if NET472 || NET6_0
         [Fact]
         public void ECDH_ESReferenceTest()
         {
@@ -79,6 +77,9 @@ namespace Microsoft.IdentityModel.Tokens.Tests
         }
 #endif
 
+#if NET_CORE
+        [PlatformSpecific(TestPlatforms.Windows)]
+#endif
         [Fact]
         public void AesGcmReferenceTest()
         {
