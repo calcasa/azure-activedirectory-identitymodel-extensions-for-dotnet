@@ -623,7 +623,7 @@ namespace Microsoft.IdentityModel.JsonWebTokens
                     }
                 }
             }
-            catch(Exception ex)
+            catch (Exception ex)
             {
                 LogHelper.LogExceptionMessage(new SecurityTokenException(LogHelper.FormatInvariant(LogMessages.IDX14307, ex, payload)));
             }
@@ -923,7 +923,7 @@ namespace Microsoft.IdentityModel.JsonWebTokens
                     var rawHeader = Base64UrlEncoder.Encode(Encoding.UTF8.GetBytes(header.ToString(Formatting.None)));
                     var encryptionResult = encryptionProvider.Encrypt(plainText, Encoding.ASCII.GetBytes(rawHeader));
                     return JwtConstants.DirectKeyUseAlg.Equals(encryptingCredentials.Alg) ?
-                        string.Join(".", rawHeader, string.Empty, Base64UrlEncoder.Encode(encryptionResult.IV), Base64UrlEncoder.Encode(encryptionResult.Ciphertext), Base64UrlEncoder.Encode(encryptionResult.AuthenticationTag)):
+                        string.Join(".", rawHeader, string.Empty, Base64UrlEncoder.Encode(encryptionResult.IV), Base64UrlEncoder.Encode(encryptionResult.Ciphertext), Base64UrlEncoder.Encode(encryptionResult.AuthenticationTag)) :
                         string.Join(".", rawHeader, Base64UrlEncoder.Encode(wrappedKey), Base64UrlEncoder.Encode(encryptionResult.IV), Base64UrlEncoder.Encode(encryptionResult.Ciphertext), Base64UrlEncoder.Encode(encryptionResult.AuthenticationTag));
                 }
                 catch (Exception ex)
@@ -1174,7 +1174,6 @@ namespace Microsoft.IdentityModel.JsonWebTokens
                 {
                     if (TokenUtilities.IsRecoverableConfiguration(validationParameters, currentConfiguration, out currentConfiguration))
                     {
-                        validationParameters.ValidateIssuerWithLKG = true;
                         tokenValidationResult = decryptedJwt != null ? ValidateJWE(outerToken, decryptedJwt, validationParameters, currentConfiguration) : ValidateJWS(token, validationParameters, currentConfiguration);
 
                         if (tokenValidationResult.IsValid)
@@ -1195,7 +1194,7 @@ namespace Microsoft.IdentityModel.JsonWebTokens
                         if (lastConfig != currentConfiguration)
                         {
                             validationParameters.ValidateIssuerWithLKG = false;
-                            return decryptedJwt != null ? ValidateJWE(outerToken, decryptedJwt, validationParameters, currentConfiguration) : ValidateJWS(token, validationParameters, currentConfiguration);
+                            return decryptedJwt != null ? ValidateJWE(outerToken, decryptedJwt, validationParameters, currentConfiguration) : ValidateJWS(token, validationParameters, currentConfiguration); ;
                         }
                     }
                 }
@@ -1203,13 +1202,22 @@ namespace Microsoft.IdentityModel.JsonWebTokens
 
             return tokenValidationResult;
         }
-     
+
         private TokenValidationResult ValidateJWS(string token, TokenValidationParameters validationParameters, BaseConfiguration configuration)
         {
             try
             {
-                var jsonWebToken = ValidateSignature(token, validationParameters, configuration);
-                return ValidateTokenPayload(jsonWebToken, validationParameters, configuration);
+                JsonWebToken validatedJsonWebToken = GetJsonWebToken(token, validationParameters, configuration, out JsonWebToken parsedJsonWebToken);
+                JsonWebToken jsonWebToken = validatedJsonWebToken ?? parsedJsonWebToken;
+                string issuer = null;
+
+                if (validationParameters.ValidateSignatureLast)
+                    issuer = Validators.ValidateIssuer(jsonWebToken.Issuer, jsonWebToken, validationParameters, configuration);
+
+                if (validatedJsonWebToken == null)
+                    ValidateSignature(token, jsonWebToken, validationParameters, configuration);
+
+                return ValidateTokenPayload(jsonWebToken, issuer, validationParameters, configuration);
             }
             catch (Exception ex)
             {
@@ -1225,9 +1233,18 @@ namespace Microsoft.IdentityModel.JsonWebTokens
         {
             try
             {
-                var innerToken = ValidateSignature(decryptedJwt, validationParameters, configuration);
+                JsonWebToken validatedJsonWebToken = GetJsonWebToken(decryptedJwt, validationParameters, configuration, out JsonWebToken parsedJsonWebToken);
+                JsonWebToken innerToken = validatedJsonWebToken ?? parsedJsonWebToken;
+                string issuer = null;
+
+                if (validationParameters.ValidateSignatureLast)
+                    issuer = Validators.ValidateIssuer(innerToken.Issuer, innerToken, validationParameters, configuration);
+
+                if (validatedJsonWebToken == null)
+                    ValidateSignature(decryptedJwt, innerToken, validationParameters, configuration);
+
                 jwtToken.InnerToken = innerToken;
-                var innerTokenValidationResult = ValidateTokenPayload(innerToken, validationParameters, configuration);
+                var innerTokenValidationResult = ValidateTokenPayload(innerToken, issuer, validationParameters, configuration);
 
                 return new TokenValidationResult
                 {
@@ -1247,47 +1264,15 @@ namespace Microsoft.IdentityModel.JsonWebTokens
             }
         }
 
-        private TokenValidationResult ValidateTokenPayload(JsonWebToken jsonWebToken, TokenValidationParameters validationParameters, BaseConfiguration configuration)
-        {
-            var expires = jsonWebToken.TryGetClaim(JwtRegisteredClaimNames.Exp, out var _) ? (DateTime?)jsonWebToken.ValidTo : null;
-            var notBefore = jsonWebToken.TryGetClaim(JwtRegisteredClaimNames.Nbf, out var _) ? (DateTime?)jsonWebToken.ValidFrom : null;
-
-            Validators.ValidateLifetime(notBefore, expires, jsonWebToken, validationParameters);
-            Validators.ValidateAudience(jsonWebToken.Audiences, jsonWebToken, validationParameters);
-            var issuer = Validators.ValidateIssuer(jsonWebToken.Issuer, jsonWebToken, validationParameters, configuration);
-            Validators.ValidateTokenReplay(expires, jsonWebToken.EncodedToken, validationParameters);
-            if (validationParameters.ValidateActor && !string.IsNullOrWhiteSpace(jsonWebToken.Actor))
-            {
-                // Infinite recursion should not occur here, as the JsonWebToken passed into this method is (1) constructed from a string
-                // AND (2) the signature is successfully validated on it. (1) implies that even if there are nested actor tokens,
-                // they must end at some point since they cannot reference one another. (2) means that the token has a valid signature
-                // and (since issuer validation occurs first) came from a trusted authority.
-                // NOTE: More than one nested actor token should not be considered a valid token, but if we somehow encounter one,
-                // this code will still work properly.
-                ValidateToken(jsonWebToken.Actor, validationParameters.ActorValidationParameters ?? validationParameters);
-            }
-            Validators.ValidateIssuerSecurityKey(jsonWebToken.SigningKey, jsonWebToken, validationParameters, configuration);
-            var type = Validators.ValidateTokenType(jsonWebToken.Typ, jsonWebToken, validationParameters);
-
-            return new TokenValidationResult
-            {
-                SecurityToken = jsonWebToken,
-                ClaimsIdentity = CreateClaimsIdentity(jsonWebToken, validationParameters, issuer),
-                IsValid = true,
-                TokenType = type
-            };
-        }
-
-        /// <summary>
-        /// Validates the JWT signature.
-        /// </summary>
-        private static JsonWebToken ValidateSignature(string token, TokenValidationParameters validationParameters, BaseConfiguration configuration)
+        private static JsonWebToken GetJsonWebToken(string token, TokenValidationParameters validationParameters, BaseConfiguration configuration, out JsonWebToken jwtToken)
         {
             if (string.IsNullOrWhiteSpace(token))
                 throw LogHelper.LogArgumentNullException(nameof(token));
 
             if (validationParameters == null)
                 throw LogHelper.LogArgumentNullException(nameof(validationParameters));
+
+            jwtToken = null;
 
             if (validationParameters.SignatureValidatorUsingConfiguration != null)
             {
@@ -1315,8 +1300,6 @@ namespace Microsoft.IdentityModel.JsonWebTokens
                 return validatedJsonWebToken;
             }
 
-            JsonWebToken jwtToken = null;
-
             if (validationParameters.TokenReader != null)
             {
                 var securityToken = validationParameters.TokenReader(token, validationParameters);
@@ -1332,7 +1315,6 @@ namespace Microsoft.IdentityModel.JsonWebTokens
                 jwtToken = new JsonWebToken(token);
             }
 
-            var encodedBytes = Encoding.UTF8.GetBytes(jwtToken.EncodedHeader + "." + jwtToken.EncodedPayload);
             if (string.IsNullOrEmpty(jwtToken.EncodedSignature))
             {
                 if (validationParameters.RequireSignedTokens)
@@ -1341,6 +1323,48 @@ namespace Microsoft.IdentityModel.JsonWebTokens
                     return jwtToken;
             }
 
+            return null;
+        }
+
+        private TokenValidationResult ValidateTokenPayload(JsonWebToken jsonWebToken, string issuer, TokenValidationParameters validationParameters, BaseConfiguration configuration)
+        {
+            var expires = jsonWebToken.TryGetClaim(JwtRegisteredClaimNames.Exp, out var _) ? (DateTime?)jsonWebToken.ValidTo : null;
+            var notBefore = jsonWebToken.TryGetClaim(JwtRegisteredClaimNames.Nbf, out var _) ? (DateTime?)jsonWebToken.ValidFrom : null;
+
+            Validators.ValidateLifetime(notBefore, expires, jsonWebToken, validationParameters);
+            Validators.ValidateAudience(jsonWebToken.Audiences, jsonWebToken, validationParameters);
+            if (!validationParameters.ValidateSignatureLast)
+                issuer = Validators.ValidateIssuer(jsonWebToken.Issuer, jsonWebToken, validationParameters, configuration);
+
+            Validators.ValidateTokenReplay(expires, jsonWebToken.EncodedToken, validationParameters);
+            if (validationParameters.ValidateActor && !string.IsNullOrWhiteSpace(jsonWebToken.Actor))
+            {
+                // Infinite recursion should not occur here, as the JsonWebToken passed into this method is (1) constructed from a string
+                // AND (2) the signature is successfully validated on it. (1) implies that even if there are nested actor tokens,
+                // they must end at some point since they cannot reference one another. (2) means that the token has a valid signature
+                // and (since issuer validation occurs first) came from a trusted authority.
+                // NOTE: More than one nested actor token should not be considered a valid token, but if we somehow encounter one,
+                // this code will still work properly.
+                ValidateToken(jsonWebToken.Actor, validationParameters.ActorValidationParameters ?? validationParameters);
+            }
+            Validators.ValidateIssuerSecurityKey(jsonWebToken.SigningKey, jsonWebToken, validationParameters, configuration);
+            var type = Validators.ValidateTokenType(jsonWebToken.Typ, jsonWebToken, validationParameters);
+
+            return new TokenValidationResult
+            {
+                SecurityToken = jsonWebToken,
+                ClaimsIdentity = CreateClaimsIdentity(jsonWebToken, validationParameters, issuer),
+                IsValid = true,
+                TokenType = type
+            };
+        }
+
+        /// <summary>
+        /// Validates the JWT signature.
+        /// </summary>
+        private static JsonWebToken ValidateSignature(string token, JsonWebToken jwtToken, TokenValidationParameters validationParameters, BaseConfiguration configuration)
+        {
+            var encodedBytes = Encoding.UTF8.GetBytes(jwtToken.EncodedHeader + "." + jwtToken.EncodedPayload);
             bool kidMatched = false;
             IEnumerable<SecurityKey> keys = null;
             if (validationParameters.IssuerSigningKeyResolverUsingConfiguration != null)

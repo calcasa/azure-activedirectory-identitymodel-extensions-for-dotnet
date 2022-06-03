@@ -263,6 +263,7 @@ namespace Microsoft.IdentityModel.Tokens
             ValidIssuer = other.ValidIssuer;
             ValidIssuers = other.ValidIssuers;
             ValidTypes = other.ValidTypes;
+            ValidateSignatureLast = other.ValidateSignatureLast;
         }
 
         /// <summary>
@@ -814,5 +815,14 @@ namespace Microsoft.IdentityModel.Tokens
         /// The default is <c>null</c>.
         /// </summary>
         public IEnumerable<string> ValidTypes { get; set; }
+
+        /// <summary>
+        /// Gets or sets a boolean that controls if the the vaidation order of the payload and signature during token validation.
+        /// </summary>
+        /// <remarks>If <see cref= "ValidateSignatureLast" /> is set to ture, it will validate payload ahead of signature .
+        /// The default is <c>false</c>.
+        /// </remarks>
+        [DefaultValue(false)]
+        public bool ValidateSignatureLast { get; set; }
     }
 }
