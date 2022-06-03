@@ -1174,6 +1174,7 @@ namespace Microsoft.IdentityModel.JsonWebTokens
                 {
                     if (TokenUtilities.IsRecoverableConfiguration(validationParameters, currentConfiguration, out currentConfiguration))
                     {
+                        validationParameters.ValidateIssuerWithLKG = true;
                         tokenValidationResult = decryptedJwt != null ? ValidateJWE(outerToken, decryptedJwt, validationParameters, currentConfiguration) : ValidateJWS(token, validationParameters, currentConfiguration);
 
                         if (tokenValidationResult.IsValid)
