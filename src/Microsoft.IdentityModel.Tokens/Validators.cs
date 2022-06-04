@@ -249,26 +249,13 @@ namespace Microsoft.IdentityModel.Tokens
                 throw LogHelper.LogExceptionMessage(new SecurityTokenInvalidIssuerException(LogMessages.IDX10204)
                 { InvalidIssuer = issuer });
 
-            if (configuration != null)
-            {
-                if (string.Equals(configuration.Issuer, issuer))
-                {
-                    LogHelper.LogInformation(LogMessages.IDX10236, issuer);
-                    return issuer;
-                }
-
-                throw LogHelper.LogExceptionMessage(
-                    new SecurityTokenInvalidIssuerException(LogHelper.FormatInvariant(LogMessages.IDX10260, issuer, (validationParameters.ValidIssuer ?? "null"), Utility.SerializeAsSingleCommaDelimitedString(validationParameters.ValidIssuers), configuration.Issuer))
-                    { InvalidIssuer = issuer });
-            }
-
             if (string.Equals(validationParameters.ValidIssuer, issuer))
             {
                 LogHelper.LogInformation(LogMessages.IDX10236, issuer);
                 return issuer;
             }
 
-            if (null != validationParameters.ValidIssuers)
+            if (validationParameters.ValidIssuers != null)
             {
                 foreach (string str in validationParameters.ValidIssuers)
                 {
@@ -286,8 +273,17 @@ namespace Microsoft.IdentityModel.Tokens
                 }
             }
 
+            if (configuration != null)
+            {
+                if (string.Equals(configuration.Issuer, issuer))
+                {
+                    LogHelper.LogInformation(LogMessages.IDX10236, issuer);
+                    return issuer;
+                }
+            }
+
             throw LogHelper.LogExceptionMessage(
-                new SecurityTokenInvalidIssuerException(LogHelper.FormatInvariant(LogMessages.IDX10205, issuer, (validationParameters.ValidIssuer ?? "null"), Utility.SerializeAsSingleCommaDelimitedString(validationParameters.ValidIssuers)))
+                new SecurityTokenInvalidIssuerException(LogHelper.FormatInvariant(LogMessages.IDX10205, issuer, (validationParameters.ValidIssuer ?? "null"), Utility.SerializeAsSingleCommaDelimitedString(validationParameters.ValidIssuers), configuration?.Issuer))
                 { InvalidIssuer = issuer });
         }
 
@@ -396,7 +392,7 @@ namespace Microsoft.IdentityModel.Tokens
             {
                 if (!validationParameters.LifetimeValidator(notBefore, expires, securityToken, validationParameters))
                     throw LogHelper.LogExceptionMessage(new SecurityTokenInvalidLifetimeException(LogHelper.FormatInvariant(LogMessages.IDX10230, securityToken))
-                        { NotBefore = notBefore, Expires = expires });
+                    { NotBefore = notBefore, Expires = expires });
 
                 return;
             }
@@ -417,11 +413,11 @@ namespace Microsoft.IdentityModel.Tokens
             DateTime utcNow = DateTime.UtcNow;
             if (notBefore.HasValue && (notBefore.Value > DateTimeUtil.Add(utcNow, validationParameters.ClockSkew)))
                 throw LogHelper.LogExceptionMessage(new SecurityTokenNotYetValidException(LogHelper.FormatInvariant(LogMessages.IDX10222, LogHelper.MarkAsNonPII(notBefore.Value), LogHelper.MarkAsNonPII(utcNow)))
-                    { NotBefore = notBefore.Value });
- 
+                { NotBefore = notBefore.Value });
+
             if (expires.HasValue && (expires.Value < DateTimeUtil.Add(utcNow, validationParameters.ClockSkew.Negate())))
                 throw LogHelper.LogExceptionMessage(new SecurityTokenExpiredException(LogHelper.FormatInvariant(LogMessages.IDX10223, LogHelper.MarkAsNonPII(expires.Value), LogHelper.MarkAsNonPII(utcNow)))
-                    { Expires = expires.Value });
+                { Expires = expires.Value });
 
             // if it reaches here, that means lifetime of the token is valid
             LogHelper.LogInformation(LogMessages.IDX10239);
