@@ -30,6 +30,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.IdentityModel.Tokens.Jwt;
 using Microsoft.IdentityModel.Json.Linq;
 using Microsoft.IdentityModel.JsonWebTokens;
 using Microsoft.IdentityModel.TestUtils;
@@ -52,21 +53,45 @@ namespace Microsoft.IdentityModel.Tokens.Tests
             try
             {
                 JsonWebTokenHandler jsonWebTokenHandler = new JsonWebTokenHandler();
+                JwtSecurityTokenHandler jwtSecurityTokenHandler = new JwtSecurityTokenHandler();
+                jwtSecurityTokenHandler.MapInboundClaims = false;
+                jwtSecurityTokenHandler.OutboundClaimTypeMap.Clear();
+                SecurityTokenDescriptor securityTokenDescriptor = new SecurityTokenDescriptor
+                {
+                    Subject = Default.ClaimsIdentity,
+                    SigningCredentials = Default.AsymmetricSigningCredentials,
+                    EncryptingCredentials = theoryData.EncryptingCredentials,
+                    AdditionalHeaderClaims = theoryData.AdditionalHeaderParams,
+                    Audience = Default.Audience,
+                    Issuer = Default.Issuer,
+                };
 
-                // Do we need an extension to EncryptingCredentials for: ApuSender, ApvSender
-                string jwe = jsonWebTokenHandler.CreateToken(
-                    Default.PayloadString,
-                    Default.AsymmetricSigningCredentials,
-                    theoryData.EncryptingCredentials,
-                    theoryData.AdditionalHeaderParams);
+                string jsonJwe = jsonWebTokenHandler.CreateToken(securityTokenDescriptor);
+                string jwtJwe = jwtSecurityTokenHandler.CreateEncodedJwt(securityTokenDescriptor);
 
-                JsonWebToken jsonWebToken = new JsonWebToken(jwe);
-                // we need the ECDSASecurityKey for the receiver to validate, use TokenValidationParameters.TokenDecryptionKey
-                TokenValidationResult tokenValidationResult = jsonWebTokenHandler.ValidateToken(jwe, theoryData.TokenValidationParameters);
+                TokenValidationResult tokenValidationResult1 = jsonWebTokenHandler.ValidateToken(jsonJwe, theoryData.TokenValidationParameters);
+                TokenValidationResult tokenValidationResult2 = jsonWebTokenHandler.ValidateToken(jwtJwe, theoryData.TokenValidationParameters);
+                TokenValidationResult tokenValidationResult3 = jwtSecurityTokenHandler.ValidateTokenAsync(jsonJwe, theoryData.TokenValidationParameters).GetAwaiter().GetResult();
+                TokenValidationResult tokenValidationResult4 = jwtSecurityTokenHandler.ValidateTokenAsync(jwtJwe, theoryData.TokenValidationParameters).GetAwaiter().GetResult();
 
-                // adjusted for theoryData.ExpectedException == tokenValidationResult.Exception
-                if (tokenValidationResult.IsValid != theoryData.ExpectedIsValid)
-                    context.AddDiff($"tokenValidationResult.IsValid != theoryData.ExpectedIsValid");
+                if (tokenValidationResult1.IsValid != theoryData.ExpectedIsValid)
+                    context.AddDiff($"tokenValidationResult1.IsValid != theoryData.ExpectedIsValid");
+
+                if (tokenValidationResult2.IsValid != theoryData.ExpectedIsValid)
+                    context.AddDiff($"tokenValidationResult2.IsValid != theoryData.ExpectedIsValid");
+
+                if (tokenValidationResult3.IsValid != theoryData.ExpectedIsValid)
+                    context.AddDiff($"tokenValidationResult3.IsValid != theoryData.ExpectedIsValid");
+
+                if (tokenValidationResult4.IsValid != theoryData.ExpectedIsValid)
+                    context.AddDiff($"tokenValidationResult4.IsValid != theoryData.ExpectedIsValid");
+
+                IdentityComparer.AreEqual(tokenValidationResult1.ClaimsIdentity, tokenValidationResult2.ClaimsIdentity, context);
+                IdentityComparer.AreEqual(tokenValidationResult1.ClaimsIdentity, tokenValidationResult3.ClaimsIdentity, context);
+                IdentityComparer.AreEqual(tokenValidationResult1.ClaimsIdentity, tokenValidationResult4.ClaimsIdentity, context);
+                IdentityComparer.AreEqual(tokenValidationResult1.Claims, tokenValidationResult2.Claims, context);
+                IdentityComparer.AreEqual(tokenValidationResult1.Claims, tokenValidationResult3.Claims, context);
+                IdentityComparer.AreEqual(tokenValidationResult1.Claims, tokenValidationResult4.Claims, context);
 
                 theoryData.ExpectedException.ProcessNoException(context);
             }
@@ -116,21 +141,11 @@ namespace Microsoft.IdentityModel.Tokens.Tests
                     ValidIssuer = Default.Issuer,
                     IssuerSigningKey = Default.AsymmetricSigningKey
                 },
-                ApuSender = "SenderInfo",
-                ApvSender = "ReceivererInfo"
+                ApuSender = Guid.NewGuid().ToString(),
+                ApvSender = Guid.NewGuid().ToString()
             };
 
-            var epkJObject = new JObject();
-            epkJObject.Add(JsonWebKeyParameterNames.Kty, testData.PublicKeySender.Kty);
-            epkJObject.Add(JsonWebKeyParameterNames.Crv, testData.PublicKeySender.Crv);
-            epkJObject.Add(JsonWebKeyParameterNames.X, testData.PublicKeySender.X);
-            epkJObject.Add(JsonWebKeyParameterNames.Y, testData.PublicKeySender.Y);
-            testData.AdditionalHeaderParams = new Dictionary<string, object>();
-            testData.AdditionalHeaderParams.Add(JwtHeaderParameterNames.Apu, testData.ApuSender);
-            testData.AdditionalHeaderParams.Add(JwtHeaderParameterNames.Apv, testData.ApvSender);
-            testData.AdditionalHeaderParams.Add(JwtHeaderParameterNames.Epk, epkJObject);
-
-            return testData;
+            return SetAdditionalHeaderParameters(testData);
         }
 
         private static CreateEcdhEsTheoryData EcdhEsCurveP256AEnc256KWNullApuApv()
@@ -158,17 +173,7 @@ namespace Microsoft.IdentityModel.Tokens.Tests
                 ApvSender = null
             };
 
-            var epkJObject = new JObject();
-            epkJObject.Add(JsonWebKeyParameterNames.Kty, testData.PublicKeySender.Kty);
-            epkJObject.Add(JsonWebKeyParameterNames.Crv, testData.PublicKeySender.Crv);
-            epkJObject.Add(JsonWebKeyParameterNames.X, testData.PublicKeySender.X);
-            epkJObject.Add(JsonWebKeyParameterNames.Y, testData.PublicKeySender.Y);
-            testData.AdditionalHeaderParams = new Dictionary<string, object>();
-            testData.AdditionalHeaderParams.Add(JwtHeaderParameterNames.Apu, testData.ApuSender);
-            testData.AdditionalHeaderParams.Add(JwtHeaderParameterNames.Apv, testData.ApvSender);
-            testData.AdditionalHeaderParams.Add(JwtHeaderParameterNames.Epk, epkJObject);
-
-            return testData;
+            return SetAdditionalHeaderParameters(testData);
         }
 
         private static CreateEcdhEsTheoryData EcdhEsCurveP384EncA256KW()
@@ -192,22 +197,11 @@ namespace Microsoft.IdentityModel.Tokens.Tests
                     ValidIssuer = Default.Issuer,
                     IssuerSigningKey = Default.AsymmetricSigningKey
                 },
-                ApuSender = "SenderInfo",
-                ApvSender = "ReceivererInfo"
+                ApuSender = Guid.NewGuid().ToString(),
+                ApvSender = Guid.NewGuid().ToString()
             };
 
-            var epkJObject = new JObject();
-            epkJObject.Add(JsonWebKeyParameterNames.Kty, testData.PublicKeySender.Kty);
-            epkJObject.Add(JsonWebKeyParameterNames.Crv, testData.PublicKeySender.Crv);
-            epkJObject.Add(JsonWebKeyParameterNames.X, testData.PublicKeySender.X);
-            epkJObject.Add(JsonWebKeyParameterNames.Y, testData.PublicKeySender.Y);
-            testData.AdditionalHeaderParams = new Dictionary<string, object>();
-            testData.AdditionalHeaderParams.Add(JwtHeaderParameterNames.Apu, testData.ApuSender);
-            testData.AdditionalHeaderParams.Add(JwtHeaderParameterNames.Apv, testData.ApvSender);
-            //testData.AdditionalHeaderParams.Add(JwtHeaderParameterNames.Epk, testData.PublicKeySender);
-            testData.AdditionalHeaderParams.Add(JwtHeaderParameterNames.Epk, epkJObject);
-            // APU, APV different
-            return testData;
+            return SetAdditionalHeaderParameters(testData);
         }
 
         private static CreateEcdhEsTheoryData EcdhEsCurveP512EncA256KW()
@@ -232,21 +226,11 @@ namespace Microsoft.IdentityModel.Tokens.Tests
                     ValidIssuer = Default.Issuer,
                     IssuerSigningKey = Default.AsymmetricSigningKey
                 },
-                ApuSender = "SenderInfo",
-                ApvSender = "ReceivererInfo"
+                ApuSender = Guid.NewGuid().ToString(),
+                ApvSender = Guid.NewGuid().ToString()
             };
 
-            var epkJObject = new JObject();
-            epkJObject.Add(JsonWebKeyParameterNames.Kty, testData.PublicKeySender.Kty);
-            epkJObject.Add(JsonWebKeyParameterNames.Crv, testData.PublicKeySender.Crv);
-            epkJObject.Add(JsonWebKeyParameterNames.X, testData.PublicKeySender.X);
-            epkJObject.Add(JsonWebKeyParameterNames.Y, testData.PublicKeySender.Y);
-            testData.AdditionalHeaderParams = new Dictionary<string, object>();
-            testData.AdditionalHeaderParams.Add(JwtHeaderParameterNames.Apu, testData.ApuSender);
-            testData.AdditionalHeaderParams.Add(JwtHeaderParameterNames.Apv, testData.ApvSender);
-            testData.AdditionalHeaderParams.Add(JwtHeaderParameterNames.Epk, epkJObject);
-
-            return testData;
+            return SetAdditionalHeaderParameters(testData);
         }
 
         private static CreateEcdhEsTheoryData EcdhEsCurveP256EncA192KW()
@@ -270,21 +254,11 @@ namespace Microsoft.IdentityModel.Tokens.Tests
                     ValidIssuer = Default.Issuer,
                     IssuerSigningKey = Default.AsymmetricSigningKey
                 },
-                ApuSender = "SenderInfo",
-                ApvSender = "ReceivererInfo"
+                ApuSender = Guid.NewGuid().ToString(),
+                ApvSender = Guid.NewGuid().ToString()
             };
 
-            var epkJObject = new JObject();
-            epkJObject.Add(JsonWebKeyParameterNames.Kty, testData.PublicKeySender.Kty);
-            epkJObject.Add(JsonWebKeyParameterNames.Crv, testData.PublicKeySender.Crv);
-            epkJObject.Add(JsonWebKeyParameterNames.X, testData.PublicKeySender.X);
-            epkJObject.Add(JsonWebKeyParameterNames.Y, testData.PublicKeySender.Y);
-            testData.AdditionalHeaderParams = new Dictionary<string, object>();
-            testData.AdditionalHeaderParams.Add(JwtHeaderParameterNames.Apu, testData.ApuSender);
-            testData.AdditionalHeaderParams.Add(JwtHeaderParameterNames.Apv, testData.ApvSender);
-            testData.AdditionalHeaderParams.Add(JwtHeaderParameterNames.Epk, epkJObject);
-
-            return testData;
+            return SetAdditionalHeaderParameters(testData);
         }
 
         private static CreateEcdhEsTheoryData EcdhEsCurveP256EncA128KW()
@@ -308,19 +282,24 @@ namespace Microsoft.IdentityModel.Tokens.Tests
                     ValidIssuer = Default.Issuer,
                     IssuerSigningKey = Default.AsymmetricSigningKey
                 },
-                ApuSender = "SenderInfo",
-                ApvSender = "ReceivererInfo"
+                ApuSender = Guid.NewGuid().ToString(),
+                ApvSender = Guid.NewGuid().ToString()
             };
 
+            return SetAdditionalHeaderParameters(testData);
+        }
+
+        private static CreateEcdhEsTheoryData SetAdditionalHeaderParameters(CreateEcdhEsTheoryData testData)
+        {
             var epkJObject = new JObject();
             epkJObject.Add(JsonWebKeyParameterNames.Kty, testData.PublicKeySender.Kty);
             epkJObject.Add(JsonWebKeyParameterNames.Crv, testData.PublicKeySender.Crv);
             epkJObject.Add(JsonWebKeyParameterNames.X, testData.PublicKeySender.X);
             epkJObject.Add(JsonWebKeyParameterNames.Y, testData.PublicKeySender.Y);
             testData.AdditionalHeaderParams = new Dictionary<string, object>();
-            testData.AdditionalHeaderParams.Add(JwtHeaderParameterNames.Apu, testData.ApuSender);
-            testData.AdditionalHeaderParams.Add(JwtHeaderParameterNames.Apv, testData.ApvSender);
-            testData.AdditionalHeaderParams.Add(JwtHeaderParameterNames.Epk, epkJObject);
+            testData.AdditionalHeaderParams.Add(JsonWebTokens.JwtHeaderParameterNames.Apu, testData.ApuSender);
+            testData.AdditionalHeaderParams.Add(JsonWebTokens.JwtHeaderParameterNames.Apv, testData.ApvSender);
+            testData.AdditionalHeaderParams.Add(JsonWebTokens.JwtHeaderParameterNames.Epk, epkJObject);
 
             return testData;
         }

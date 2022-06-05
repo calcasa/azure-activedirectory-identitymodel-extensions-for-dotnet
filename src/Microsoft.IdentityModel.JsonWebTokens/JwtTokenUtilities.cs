@@ -282,11 +282,6 @@ namespace Microsoft.IdentityModel.JsonWebTokens
             return key;
         }
 
-        internal static SecurityKey GetSecurityKey(EncryptingCredentials encryptingCredentials, CryptoProviderFactory cryptoProviderFactory, out byte[] wrappedKey)
-        {
-            return GetSecurityKey(encryptingCredentials, cryptoProviderFactory, null, out wrappedKey);
-        }
-
         internal static SecurityKey GetSecurityKey(
             EncryptingCredentials encryptingCredentials,
             CryptoProviderFactory cryptoProviderFactory,
@@ -313,10 +308,10 @@ namespace Microsoft.IdentityModel.JsonWebTokens
                 if (additionalHeaderClaims != null && additionalHeaderClaims.Count > 0)
                 {
                     if (additionalHeaderClaims.TryGetValue(JwtHeaderParameterNames.Apu, out object objApu))
-                        apu = (objApu != null) ? objApu.ToString() : null;
+                        apu = objApu?.ToString();
 
                     if (additionalHeaderClaims.TryGetValue(JwtHeaderParameterNames.Apv, out object objApv))
-                        apv = (objApv != null) ? objApv.ToString() : null;
+                        apv = objApv?.ToString();
                 }
 
                 EcdhKeyExchangeProvider ecdhKeyExchangeProvider = new EcdhKeyExchangeProvider(encryptingCredentials.Key as ECDsaSecurityKey, encryptingCredentials.KeyExchangePublicKey, encryptingCredentials.Alg, encryptingCredentials.Enc);
@@ -325,11 +320,11 @@ namespace Microsoft.IdentityModel.JsonWebTokens
 
                 // only 128, 384 and 512 AesKeyWrap for CEK algorithm
                 if (SecurityAlgorithms.Aes128KW.Equals(kwProvider.Algorithm, StringComparison.Ordinal))
-                    securityKey = new SymmetricSecurityKey(JwtTokenUtilities.GenerateKeyBytes(256));
+                    securityKey = new SymmetricSecurityKey(GenerateKeyBytes(256));
                 else if (SecurityAlgorithms.Aes192KW.Equals(kwProvider.Algorithm, StringComparison.Ordinal))
-                    securityKey = new SymmetricSecurityKey(JwtTokenUtilities.GenerateKeyBytes(384));
+                    securityKey = new SymmetricSecurityKey(GenerateKeyBytes(384));
                 else if (SecurityAlgorithms.Aes256KW.Equals(kwProvider.Algorithm, StringComparison.Ordinal))
-                    securityKey = new SymmetricSecurityKey(JwtTokenUtilities.GenerateKeyBytes(512));
+                    securityKey = new SymmetricSecurityKey(GenerateKeyBytes(512));
                 else
                     throw LogHelper.LogExceptionMessage(
                         new SecurityTokenEncryptionFailedException(LogHelper.FormatInvariant(TokenLogMessages.IDX10617, LogHelper.MarkAsNonPII(SecurityAlgorithms.Aes128KW), LogHelper.MarkAsNonPII(SecurityAlgorithms.Aes192KW), LogHelper.MarkAsNonPII(SecurityAlgorithms.Aes256KW), LogHelper.MarkAsNonPII(kwProvider.Algorithm))));
@@ -344,11 +339,11 @@ namespace Microsoft.IdentityModel.JsonWebTokens
 
                 // only 128, 384 and 512 AesCbcHmac for CEK algorithm
                 if (SecurityAlgorithms.Aes128CbcHmacSha256.Equals(encryptingCredentials.Enc))
-                    securityKey = new SymmetricSecurityKey(JwtTokenUtilities.GenerateKeyBytes(256));
+                    securityKey = new SymmetricSecurityKey(GenerateKeyBytes(256));
                 else if (SecurityAlgorithms.Aes192CbcHmacSha384.Equals(encryptingCredentials.Enc))
-                    securityKey = new SymmetricSecurityKey(JwtTokenUtilities.GenerateKeyBytes(384));
+                    securityKey = new SymmetricSecurityKey(GenerateKeyBytes(384));
                 else if (SecurityAlgorithms.Aes256CbcHmacSha512.Equals(encryptingCredentials.Enc))
-                    securityKey = new SymmetricSecurityKey(JwtTokenUtilities.GenerateKeyBytes(512));
+                    securityKey = new SymmetricSecurityKey(GenerateKeyBytes(512));
                 else
                     throw LogHelper.LogExceptionMessage(
                         new SecurityTokenEncryptionFailedException(LogHelper.FormatInvariant(TokenLogMessages.IDX10617, LogHelper.MarkAsNonPII(SecurityAlgorithms.Aes128CbcHmacSha256), LogHelper.MarkAsNonPII(SecurityAlgorithms.Aes192CbcHmacSha384), LogHelper.MarkAsNonPII(SecurityAlgorithms.Aes256CbcHmacSha512), LogHelper.MarkAsNonPII(encryptingCredentials.Enc))));
